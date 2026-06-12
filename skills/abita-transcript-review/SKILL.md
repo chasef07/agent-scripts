@@ -9,11 +9,11 @@ Read-only diagnosis skill. Use portal `AgentCall` rows as source of truth. Do no
 
 ## Source
 
-- Primary repo: `/Users/chasefagen/acuity_site`
+- Primary repo: `/Users/chasefagen/Projects/acuity_site`
 - Fix owners:
-  - `/Users/chasefagen/abita_agent`: prompt, runtime, state, tool boundary, voice behavior
-  - `/Users/chasefagen/abita_middleware`: AMD/API contracts, availability, booking, insurance source of truth
-  - `/Users/chasefagen/acuity_site`: ingestion, normalization, DB, portal, admin analytics
+  - `/Users/chasefagen/Projects/abita_agent`: prompt, runtime, state, tool boundary, voice behavior
+  - `/Users/chasefagen/Projects/abita_middleware`: AMD/API contracts, availability, booking, insurance source of truth
+  - `/Users/chasefagen/Projects/acuity_site`: ingestion, normalization, DB, portal, admin analytics
 - Re-check current schema/helpers before present-tense claims:
   - `prisma/schema.prisma`
   - `lib/call-types.ts`
@@ -23,12 +23,12 @@ Read-only diagnosis skill. Use portal `AgentCall` rows as source of truth. Do no
 
 ## Access
 
-- Start with `git -C /Users/chasefagen/acuity_site status -sb`.
+- Start with `git -C /Users/chasefagen/Projects/acuity_site status -sb`.
 - Never print `DATABASE_URL`, tokens, phone numbers, DOBs, member IDs, or raw transcripts.
 - If shell env lacks DB config, check exact key names only:
 
 ```bash
-cd /Users/chasefagen/acuity_site
+cd /Users/chasefagen/Projects/acuity_site
 perl -ne 'print "$1\n" if /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/' .env.local | sort
 ```
 
@@ -176,13 +176,26 @@ For autonomous worker tasks, hand off one repo/task only and include:
 - expected regression test
 - preferred smallest deterministic fix
 
+## PR Body
+
+For transcript-backed fixes, require the worker PR body to make the reviewer path clear:
+
+- `Issue`: production symptom and aggregate counts.
+- `Evidence`: sanitized call IDs and short tool/final-state proof only.
+- `Why it failed`: exact runtime/state/tool boundary, not model blame alone.
+- `Fix`: what changed and why that boundary owns it.
+- `Benefit`: expected production improvement.
+- `Validation`: focused checks, `$autoreview`, and CI/check status when available.
+
+Never include raw transcript text, phone numbers, DOBs, member IDs, patient names, credentials, private URLs, or office-sensitive context in a public PR body.
+
 ## Delegate
 
 If `Autonomous` and owner is `abita_agent`, route through the orchestrator to a worker:
 
 ```text
 Title: abita_agent: <short issue>
-Repo: /Users/chasefagen/abita_agent
+Repo: /Users/chasefagen/Projects/abita_agent
 Task: <call evidence + suspected runtime/state/tool/prompt boundary>
 Permission: <triage|local-edit|push-pr>
 ```

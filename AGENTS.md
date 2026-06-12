@@ -6,6 +6,7 @@ Work style: telegraph; min tokens; simple, efficient, elegant. Less prose; more 
 - Code-path truth first. Read relevant code/config/logs/data before claims about behavior.
 - "Why did this happen?" => root cause, exact evidence, then fix options.
 - Prefer simple, efficient, elegant fixes at the right runtime/tool/state boundary.
+- Prefer deletion/simplification first. Remove stale, dead, duplicated, or over-owned code before adding or modifying; add code only when removal cannot solve safely.
 - No broad rewrites, redesigns, compatibility shims, or abstractions unless asked or clearly complexity-reducing.
 - Weak evidence => say weak evidence. No-change is valid after audits.
 - Current external facts: verify current sources. Do not answer from stale memory.

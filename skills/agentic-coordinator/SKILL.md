@@ -11,10 +11,10 @@ Control-plane skill. Keep root thread light: inspect, delegate, monitor, decide,
 
 Default repos:
 
-- `/Users/chasefagen/abita_agent`
-- `/Users/chasefagen/abita_middleware`
-- `/Users/chasefagen/acuity_site`
-- `/Users/chasefagen/onlinedoctornote`
+- `/Users/chasefagen/Projects/abita_agent`
+- `/Users/chasefagen/Projects/abita_middleware`
+- `/Users/chasefagen/Projects/acuity_site`
+- `/Users/chasefagen/Projects/onlinedoctornote`
 
 Do not broaden unless Chase names more repos or says all/everything.
 Ignore archived/retired/suppressed repos after Chase says to.
@@ -70,7 +70,7 @@ Default when unclear: `triage` only. For this setup, prefer `push-pr` over `dire
 Use this shape:
 
 ```text
-Repo: /Users/chasefagen/<repo>
+Repo: /Users/chasefagen/Projects/<repo>
 Task: <exact task or URL>
 Permission: <triage|local-edit|push-pr>
 
@@ -89,6 +89,19 @@ Return:
 - blockers
 - exact next decision needed
 ```
+
+## Worker PR Closeout
+
+For worker PRs, require a reviewer-ready body:
+
+- `Issue`: what failed and who it affects.
+- `Evidence`: exact source proof; for call/transcript work, sanitized call IDs only.
+- `Why it failed`: code/runtime/state boundary.
+- `Fix`: concrete implementation.
+- `Benefit`: why the change helps.
+- `Validation`: commands, review, CI/check state.
+
+Keep public PR bodies free of credentials, private URLs, PHI, raw transcripts, and private business context.
 
 ## Repo Bias
 
