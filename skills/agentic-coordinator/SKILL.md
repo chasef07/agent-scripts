@@ -55,6 +55,10 @@ Default when unclear: `triage` only. For this setup, prefer `push-pr` over `dire
 ## Worker Threads
 
 - One repo/task per worker.
+- Worker thread means a visible Codex Project thread in Chase's sidebar.
+- Use Codex thread tools (`create_thread`, `fork_thread`, `send_message_to_thread`, etc.) for worker creation/steering when available.
+- Create worktree-backed project threads for code edits unless Chase asks to use the local checkout.
+- Do not use hidden/internal subagents for worker-thread work unless Chase explicitly says `subagent`.
 - Reuse existing repo worker when continuing related work.
 - Rename on assignment: `<Repo>: <short current task>`.
 - Examples:
@@ -79,7 +83,7 @@ Do not spawn subworkers or manage other threads.
 Respect unrelated dirty changes.
 Implement only within scope.
 Run focused checks and the repo's normal validation when practical.
-Use $autoreview before publish when code changed and the skill is available.
+Ask Chase before running $autoreview unless the current instruction already explicitly requested it.
 
 Return:
 - status
