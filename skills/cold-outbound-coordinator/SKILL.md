@@ -1,56 +1,104 @@
 ---
 name: cold-outbound-coordinator
-description: "Coordinate cold outbound prospecting, drafting, approval, sending, reply triage, follow-up, suppression, and reporting from Chase's local outbound ledger plus Airtable/Gmail integrations."
+description: "Coordinate Acuity Health cold outbound from the local outbound_ops ledger: prospect triage, enrichment, email drafts, approval/send gates, Gmail reply triage, suppression, follow-up, and reports. Use for growth-orchestrator heartbeats, worker handoffs, outbound audits, and safe send loops."
 ---
 
 # Cold Outbound Coordinator
 
-Control-plane skill. Keep the main thread on queue decisions, proof, and owner asks. Use bounded workers for research, enrichment, drafting, reply triage, and reports when useful.
+Run outbound from evidence, not volume. Ledger first. Keep the root orchestrator light; use workers for bounded work.
 
-## Source
+## Sources
 
 - Project: `/Users/chasefagen/Projects/outbound_ops`
 - Ledger: `/Users/chasefagen/Projects/outbound_ops/data/outbound.sqlite`
+- Policy: `/Users/chasefagen/Projects/outbound_ops/config/outbound_policy.json`
 - CRM: Airtable base `appJlbWspuuc34LvZ`, Companies table `tblhBmRj4vir0UF2z`
-- Email: Gmail through `scripts/gog_acuity_readonly.sh` by default; send through `scripts/gog_acuity.sh` only when policy permits.
+- Gmail read: `scripts/gog_acuity_readonly.sh`
+- Gmail send: `scripts/gog_acuity.sh` only when all gates pass
 
-## Defaults
+## Modes
 
-- Auto-send only when policy permits it and compliance gates pass.
-- If policy blocks send, draft/log instead.
-- Check suppression before every prospect, draft, follow-up, and send.
-- Stop sequence on reply, bounce, unsubscribe, explicit not-interested, or legal/angry response.
-- Never invent personalization. Use website, CRM, prior touches, inbox, or public-source evidence.
-- Never print secrets, raw inbox dumps, patient data, private customer context, or credentials.
-- Keep emails short, accurate, non-deceptive, and easy to opt out of.
+### Triage
 
-## Cold Email Theory
+Use for heartbeats and root orchestrator threads, including `Big Autistic Daddy 2.0`.
 
-- Goal: get a meeting, not explain the product.
+- Run report and policy check.
+- Inspect due counts, reply counts, suppression status, and blockers.
+- Do not research the web, draft many emails, or send.
+- Reuse an existing worker for the same lane.
+- Create a visible worker only for bounded work.
+
+### Worker
+
+Use for enrichment, drafting, reply triage, follow-up planning, or reporting.
+
+- Work one lane at a time.
+- Use the ledger before Airtable, Gmail, or web research.
+- Record or propose ledger changes with exact proof.
+- Stop when evidence, policy, suppression, or approval is missing.
+
+### Send
+
+Use only when explicitly granted.
+
+- Run `policy-check` immediately before sending.
+- Send only approved, unsuppressed touches within run/day caps.
+- Record provider message/thread IDs.
+- Stop on reply, bounce, unsubscribe, not-interested, or angry/legal response.
+
+## Hard Rules
+
+- Never print secrets, raw inbox dumps, patient data, private customer context, credentials, or full raw email bodies.
+- Check suppression before prospecting, drafting, follow-up, or send.
+- Never invent personalization.
+- Do not email existing customers, competitors, suppressed contacts, weak-fit targets, or non-ophthalmology practices.
+- Every commercial email must include sender identity, physical address, and opt-out text from policy.
+- If policy blocks send, draft/log/report only.
+- Prefer fewer high-fit prospects over volume.
+
+## Commands
+
+```bash
+cd /Users/chasefagen/Projects/outbound_ops
+python3 scripts/outbound.py report
+python3 scripts/outbound.py policy-check
+python3 scripts/outbound.py due --date YYYY-MM-DD
+python3 scripts/outbound.py touches --approval-state needs_approval
+```
+
+Read Gmail safely:
+
+```bash
+scripts/gog_acuity_readonly.sh gmail search 'newer_than:1d' --max 20 --json
+scripts/gog_acuity_readonly.sh gmail get <messageId> --sanitize-content --json
+```
+
+## Email Standard
+
+- Goal: get a meeting.
 - One email = one reason, one pain, one outcome, one ask.
-- Best length: 5-8 short lines before signature.
-- Structure: relevant signal -> Acuity outcome -> simple meeting CTA.
-- Use concrete Acuity language: AI receptionist for ophthalmology; answer patient calls; book visits into the EMR; transfer staff-only requests with context; keep the front desk focused on patients in the office.
-- Avoid fake personalization, hype, long feature lists, ROI claims without evidence, and vague AI language.
-- CTA default: `Open to a quick 15-minute workflow review next week?`
+- Keep it 5-8 short lines before signature.
+- Structure: relevant signal -> Acuity outcome -> optional proof -> simple CTA.
+- Default CTA: `Open to a quick 15-minute workflow review next week?`
+- Avoid fake personalization, hype, long feature lists, vague AI language, and unsupported ROI claims.
 
-## Proof Points
+Approved proof:
 
-- Approved anonymous case study: Acuity is live in a six-location ophthalmology practice that had been dropping about 200 calls a week; Acuity now helps them capture and book roughly 200 appointments a week.
-- Optional revenue line: this represents over $100k in weekly captured revenue. Use sparingly, only when the email would benefit from a commercial proof point.
-- Do not name the practice unless Chase explicitly approves it.
-- Do not promise identical results. Phrase as observed proof, not a guarantee.
-- Best cold email use: one short proof sentence after the Acuity outcome, then the meeting CTA.
+- Acuity is live in a six-location ophthalmology practice that had been dropping about 200 calls a week.
+- Acuity now helps them capture and book roughly 200 appointments a week.
+- Optional commercial line: over `$100k` in weekly captured revenue.
+- Use anonymously unless Chase explicitly approves naming the practice.
+- Never imply identical results are guaranteed.
 
 ## Classify
 
-Lead:
+Prospect:
 
-- `Ready to draft`: good fit, reachable, not suppressed, evidence exists.
+- `Ready`: good fit, reachable, unsuppressed, evidence exists.
 - `Needs enrichment`: missing contact/email or weak evidence.
-- `Needs Chase`: strategic/account decision or risky message.
 - `Suppress`: unsubscribe, bad fit, competitor, existing customer, invalid domain, do-not-contact.
-- `No action`: stale, duplicate, or not worth pursuing.
+- `Needs Chase`: strategic account, risky claim, unusual send decision.
+- `No action`: duplicate, stale, or not worth pursuing.
 
 Reply:
 
@@ -66,62 +114,39 @@ Reply:
 - `Angry/legal`
 - `Unknown`
 
-## Loop
-
-1. Run report.
-2. Pull due companies.
-3. Check suppression.
-4. Enrich only due or high-priority rows.
-5. Draft evidence-backed touch.
-6. Mark draft `needs_approval`.
-7. Send only when policy permits, caps allow it, and compliance footer is present.
-8. Read replies as sanitized summaries.
-9. Classify and update next action/date.
-10. Report meaningful changes only.
-
-## Commands
-
-```bash
-cd /Users/chasefagen/Projects/outbound_ops
-python3 scripts/outbound.py report
-python3 scripts/outbound.py due --date YYYY-MM-DD
-python3 scripts/outbound.py export-companies reports/companies.csv
-```
-
-Gmail read-only examples:
-
-```bash
-scripts/gog_acuity_readonly.sh gmail search 'newer_than:1d' --max 20 --json
-scripts/gog_acuity_readonly.sh gmail get <messageId> --sanitize-content --json
-```
-
 ## Worker Prompt
 
 ```text
+Goal: Acuity outbound growth loop
+Thread: outbound_ops: <short lane>
 Repo: /Users/chasefagen/Projects/outbound_ops
-Task: <prospect enrichment|draft emails|reply triage|report>
-Permission: <triage|local-edit|draft-only|send-approved>
+Task: <reply triage|prospect enrichment|email drafts|approved sends|report>
+Boundary: <triage|local-edit|draft-only|send-approved>; no secrets, raw inbox dumps, patient data, or private customer context.
 
-Use the local ledger first.
-Do not send email unless permission is send-approved and the touch is approved.
-Respect suppression.
-No raw secrets, raw inbox dumps, patient data, or private customer context.
+Use $cold-outbound-coordinator.
+Ledger first.
+Respect suppression and policy.
+Do not send unless boundary is send-approved and gates pass.
 
 Return:
+- status
 - rows reviewed
-- changes proposed or made
+- changes made or proposed
 - evidence used
-- drafts created
-- owner decisions needed
-- risks
+- drafts/sends/replies/suppressions
+- blockers
+- decisions needed
+- recommended next step
 ```
 
-## Go Live Gates
+## Output
 
-- `gog auth doctor --check` clean for the sending account.
-- Sender account, signature, and physical address configured.
-- Suppression import complete.
-- Airtable sync tested read-only.
-- First campaign copy approved.
-- First 10 sends manually approved.
-- Bounce and reply classification tested.
+Report only meaningful changes:
+
+- prospects added or enriched
+- drafts created
+- emails sent
+- replies classified
+- suppressions added
+- blockers
+- Chase decisions needed

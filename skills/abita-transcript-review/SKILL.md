@@ -1,153 +1,120 @@
 ---
 name: abita-transcript-review
-description: "Review recent or unreviewed Abita AgentCall transcripts from the acuity_site portal database for tool-call anomalies, failed reviews, booking/reschedule/cancel/insurance/transfer issues, and call smoothness opportunities. Use when asked to audit Abita calls, review transcripts, find production call failures, inspect tool errors, or prepare worker lanes from call evidence."
+description: "Review Abita AgentCall evidence from the acuity_site portal database for real production issues in booking, reschedule, cancel, insurance, transfer, language, latency, and tool behavior. Use for Abita transcript audits, heartbeat triage, high-signal call investigation, worker handoffs, and transcript-backed PR evidence."
 ---
 
 # Abita Transcript Review
 
-Read-only diagnosis skill. Use portal `AgentCall` rows as source of truth. Do not edit code, create issues, push, or open PRs from this skill unless Chase explicitly asks.
+Find real call failures. Route the fix to the right owner. Stay read-only unless a separate worker boundary explicitly grants implementation.
 
-## Source
+## Sources
 
-- Primary repo: `/Users/chasefagen/Projects/acuity_site`
+- Portal repo: `/Users/chasefagen/Projects/acuity_site`
 - Fix owners:
-  - `/Users/chasefagen/Projects/abita_agent`: prompt, runtime, state, tool boundary, voice behavior
-  - `/Users/chasefagen/Projects/abita_middleware`: AMD/API contracts, availability, booking, insurance source of truth
-  - `/Users/chasefagen/Projects/acuity_site`: ingestion, normalization, DB, portal, admin analytics
-- Re-check current schema/helpers before present-tense claims:
-  - `prisma/schema.prisma`
-  - `lib/call-types.ts`
-  - `lib/admin-analytics.ts`
-  - `lib/call-normalization.ts`
-  - `lib/portal-overview.ts`
+  - `abita_agent`: prompt, voice, runtime state, tool definitions, tool guards
+  - `abita_middleware`: AMD/API truth, availability, booking, insurance contracts
+  - `acuity_site`: ingestion, normalization, review jobs, portal analytics
+  - `Chase`: office policy, clinical policy, privacy, money, customer decision
 
-## Access
+Re-check current code before present-tense claims:
+
+- `prisma/schema.prisma`
+- `lib/call-types.ts`
+- `lib/call-normalization.ts`
+- `lib/admin-analytics.ts`
+- `lib/portal-overview.ts`
+
+## Modes
+
+### Triage
+
+Use for heartbeats and orchestrator routing.
+
+- Run aggregate metadata only.
+- Do not inspect raw transcripts.
+- Classify signal.
+- Reuse an existing worker/PR for the same issue class.
+- Create a visible worker only for bounded, high-signal work.
+
+### Review
+
+Use for worker threads, specific call IDs, or direct audits.
+
+- Inspect only selected high-signal calls.
+- Compare caller request, agent promise, loaded state, tool call/result, final flags, and backend-confirmed state when available.
+- Use short paraphrases and turn numbers. Do not dump transcript text.
+
+### Handoff
+
+Use when a finding is `Autonomous`.
+
+- One worker = one repo/task.
+- Include call IDs, exact sanitized evidence, suspected boundary, expected regression test, and smallest deterministic fix.
+- Grant `push-pr` only when explicitly allowed.
+
+## Hard Rules
 
 - Start with `git -C /Users/chasefagen/Projects/acuity_site status -sb`.
-- Never print `DATABASE_URL`, tokens, phone numbers, DOBs, member IDs, or raw transcripts.
-- If shell env lacks DB config, check exact key names only:
+- Load `.env.local` without echoing values.
+- Run read-only SQL only.
+- Never print secrets, tokens, `DATABASE_URL`, phone numbers, DOBs, member IDs, patient names, private customer context, or raw transcripts.
+- Aggregate first. Do not read calls linearly.
+- Use structured fields and `data.toolExecutions`; do not search broad JSON text for tool names.
+- Weak evidence means `No action` or `Data gap`.
+- A recovered tool error can be `Monitor`, not automatically a bug.
+- If DB access is missing, stop with the exact missing piece.
+
+Safe env-key check:
 
 ```bash
 cd /Users/chasefagen/Projects/acuity_site
 perl -ne 'print "$1\n" if /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/' .env.local | sort
 ```
 
-- Load `.env.local` without echoing values. Run read-only SQL only.
-- If DB access is missing, stop with the exact missing piece; do not invent findings.
+## Signals
 
-## Flow
+Rank by production risk:
 
-1. Choose window:
-   - default: last 24h
-   - use 48h when Chase asks for broader transcript review
-   - use unreviewed/recent when an orchestrator automation asks for new work
-2. Aggregate first. Do not read transcripts linearly.
-3. Select high-signal calls.
-4. Inspect selected calls only, comparing transcript, tools, and backend-confirmed state.
-5. Classify each finding as:
-   - `Autonomous`: clear bug or deterministic improvement with focused validation path
-   - `Needs Chase`: product/office policy/privacy decision
-   - `Monitor`: real but not worth a code change yet
-   - `Data gap`: evidence missing or ingestion incomplete
-   - `No action`: behavior correct after inspection
-6. For `Autonomous` findings, prepare a worker handoff. Do not fix inside this review thread.
+1. Agent promised success but the tool/backend did not confirm it.
+2. Final `AgentCall` flags contradict tool results.
+3. Tool errors on `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `transfer_call`, `check_insurance`, or patient identity.
+4. Repeated tool loops after a clear request.
+5. Transfer after avoidable tool/runtime failure.
+6. Failed review with tool or final-state evidence.
+7. Long latency, silence, interruption, or language-switch friction tied to concrete events.
+8. Smoothness opportunities after correctness issues are handled.
 
-## Aggregate Signals
+Handle legacy tool aliases only when present in the data, such as `book_appt`, `reschedule_appt`, or `cancel_appt`.
 
-Query metadata before full JSON payloads:
+## Checks
 
-```sql
-SELECT id, name FROM practice WHERE lower(name) LIKE '%abita%';
-
-SELECT
-  "callId",
-  "startedAt",
-  "durationSec",
-  status,
-  "toolCalls",
-  "toolErrors",
-  "needsReview",
-  "reviewStatus",
-  "reviewAverageScore",
-  "bookedAppointment",
-  "confirmedAppointment",
-  "cancelledAppointment",
-  transferred,
-  "outcomeSummary"
-FROM agent_call
-WHERE "practiceId" = '<verified-abita-practice-id>'
-  AND "startedAt" >= now() - interval '24 hours'
-ORDER BY "toolErrors" DESC, "needsReview" DESC, "durationSec" DESC
-LIMIT 100;
-```
-
-Rank first:
-
-- `toolErrors > 1`
-- `toolErrors = 1` on booking, reschedule, cancel, insurance, transfer, patient identity
-- `reviewStatus = 'failed'`
-- `reviewResult.passed = false`
-- `needsReview = true`
-- `status IN ('FAILED', 'ABANDONED', 'ESCALATED')`
-- long calls with no booking, confirmation, cancellation, transfer, or clear resolution
-- repeated same-tool loops, especially `get_availability`, `check_insurance`, `verify_patient`, `book_appt`, `reschedule_appt`
-- high interruption, language switching, runtime errors, or latency spikes when present in `data.sessionEvents`, `data.language`, or `data.turns`
-
-## Inspect
-
-For each selected call, compare:
-
-- caller request
-- agent promise / explanation
-- tool called
-- tool result
-- final `AgentCall` fields
-- `data.toolExecutions`, `data.sessionEvents`, `data.language`
-- existing `reviewResult` if present
-
-Use short paraphrases and turn numbers. Avoid raw transcript dumps.
-
-## Heuristics
-
-Tool anomaly:
-
-- agent says success but tool errored
-- tool succeeds but caller is not clearly told
-- final flags contradict tool output
-- repeated tool calls indicate loop or missing state
-- tool error recovered cleanly may be `Monitor`, not a bug
-
-Workflow checks:
-
-- Booking: slot offered, caller confirmed exact slot, referring doctor handled, `book_appt` success reflected in final state.
-- Reschedule: old appointment confirmed, new slot confirmed, cancellation/booking receipt is structured, no accidental new booking.
-- Cancel: appointment identity confirmed, explicit cancel confirmation, loaded pre-call appointment state considered.
-- Confirm: patient identity and appointment target are clear before confirmation.
-- Insurance: medical vs routine vision lane is right, plan ambiguity handled, no repeated `check_insurance` loop.
-- Transfer: correct for emergency, caller insists on human, unsupported request, or office policy; suspicious if used as avoidable fallback.
-- Staff task: non-live office work captured with actionable summary; emergency/human-now paths transfer instead.
-
-Smoothness opportunities:
-
-- one-date-at-a-time availability loops
-- repeated openings/acknowledgments
-- long pauses or high latency around tools
-- caller confusion after tool output
-- avoidable re-asking for known state
-- Spanish/language switch friction
-- STT confidence or transcript split problems
+- Booking: exact slot offered, caller confirmed, tool succeeded, final state reflects it.
+- Reschedule: old appointment identified, new slot confirmed, no accidental new booking, final state reflects it.
+- Cancel: appointment identity and explicit cancel confirmation are clear.
+- Confirm: patient and appointment target are clear before confirmation.
+- Insurance: medical vs routine vision lane is right; ambiguity does not loop.
+- Transfer: valid for emergency, caller insistence, unsupported request, or office policy; suspicious as avoidable fallback.
+- Language: detected language, tool/runtime language, and TTS response language stay coherent.
+- Latency: isolate STT, EOU, LLM, tool, TTS, and provider/runtime gaps when traces exist.
 
 False-positive guards:
 
-- Do not assume every valid cancellation needs same-call `confirm_appt`; preloaded appointment state plus explicit confirmation can be valid.
-- Do not mark transfers bad when caller insisted, request was urgent/clinical, or policy requires live handoff.
-- Do not treat failed review infrastructure as a failed call without transcript/tool evidence.
-- Missing audio on long calls can be storage/cap behavior; verify the row and payload fields before blaming ingestion.
-- No-change is valid after evidence review.
+- Do not blame the model when the tool contract or runtime state is the real boundary.
+- Do not mark policy-required transfers as failures.
+- Do not treat review infrastructure failure as call failure without call evidence.
+- Do not assume missing audio is ingestion failure without checking row/payload fields.
+
+## Classify
+
+- `Autonomous`: clear bug or deterministic improvement with focused validation path.
+- `Needs Chase`: product, office policy, clinical, privacy, money, credential, or customer decision.
+- `Monitor`: real signal but not worth a change yet.
+- `Data gap`: evidence missing or source of truth unavailable.
+- `No action`: behavior correct or evidence too weak.
 
 ## Output
 
-Keep it compact:
+Keep it compact.
 
 ```text
 Window: <range>
@@ -158,56 +125,40 @@ Needs Chase: <n>
 Monitor/Data gap: <n>
 
 Finding:
-- Call: <callId or portal URL>
+- Call: <sanitized call id>
 - Symptom: <one line>
 - Evidence: <turn/tool/final-state proof, no raw PHI>
 - Owner: <abita_agent|abita_middleware|acuity_site|Chase>
 - Confidence: <high|medium|low>
-- Recommendation: <fix|monitor|ask Chase|no action>
-- Worker task: <exact task if autonomous>
-- Permission: <triage|local-edit|push-pr>
+- Action: <fix|worker|monitor|ask Chase|no action>
+- Worker: <title + permission if needed>
 ```
 
-For autonomous worker tasks, hand off one repo/task only and include:
-
-- call IDs
-- exact evidence
-- suspected boundary
-- expected regression test
-- preferred smallest deterministic fix
-
-## PR Body
-
-For transcript-backed fixes, require the worker PR body to make the reviewer path clear:
-
-- `Issue`: production symptom and aggregate counts.
-- `Evidence`: sanitized call IDs and short tool/final-state proof only.
-- `Why it failed`: exact runtime/state/tool boundary, not model blame alone.
-- `Fix`: what changed and why that boundary owns it.
-- `Benefit`: expected production improvement.
-- `Validation`: focused checks, `$autoreview`, and CI/check status when available.
-
-Never include raw transcript text, phone numbers, DOBs, member IDs, patient names, credentials, private URLs, or office-sensitive context in a public PR body.
-
-## Delegate
-
-If `Autonomous` and owner is `abita_agent`, route through the orchestrator to a worker:
+## Worker Prompt
 
 ```text
-Title: abita_agent: <short issue>
-Repo: /Users/chasefagen/Projects/abita_agent
-Task: <call evidence + suspected runtime/state/tool/prompt boundary>
-Permission: <triage|local-edit|push-pr>
+Title: <owner>: <short issue>
+Repo: <absolute repo path>
+Task: <exact issue and sanitized call evidence>
+Boundary: <triage|local-edit|push-pr>; no direct main push, merge, release, destructive git, secrets, raw transcripts, or PHI.
+Expected proof: <focused test/check and review evidence>
+
+Use $abita-transcript-review for the evidence pass.
+Respect dirty worktrees.
+Implement the smallest deterministic fix at the right boundary.
+Ask Chase before $autoreview unless already approved.
+Open a draft PR only if push-pr was granted and checks pass.
 ```
 
-Rules:
+## PR Evidence
 
-- Use `push-pr` only when Chase or the orchestrator has explicitly granted it.
-- Otherwise use `local-edit` for fixes or `triage` for uncertain evidence.
-- Worker must implement the smallest deterministic runtime/state/tool-boundary fix.
-- Prompt-only fixes are acceptable only when the issue is truly wording/routing.
-- Worker must add focused regression coverage for accepted behavior bugs.
-- Worker must run focused checks and `$autoreview` before publishing.
-- Worker opens a draft PR only with `push-pr` permission.
+For transcript-backed fixes, require:
 
-If owner is `abita_middleware` or `acuity_site`, use the same worker pattern with that repo path. If owner is `Chase`, ask with concrete options and consequences.
+- `Issue`: production symptom and aggregate count.
+- `Evidence`: sanitized call IDs plus short tool/final-state proof.
+- `Why it failed`: prompt, runtime state, tool contract, middleware/API, ingestion, or policy boundary.
+- `Fix`: what changed and why that boundary owns it.
+- `Benefit`: expected production improvement.
+- `Validation`: focused checks, `$autoreview` status when approved, and CI/check status.
+
+Never include raw transcripts, phone numbers, DOBs, member IDs, patient names, credentials, private URLs, or office-sensitive context in a public PR body.
