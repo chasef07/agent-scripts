@@ -19,8 +19,14 @@ Keep tokens, cookies, provider responses, and any non-dev credentials out of com
 
 ## Dev Credentials
 
-Read dev credentials from local environment only. Do not commit credentials into
-this skill, shell history, logs, PRs, or final answers.
+Read dev credentials from local environment or the local-only env file. Do not
+commit credentials into this skill, shell history, logs, PRs, or final answers.
+
+Default local env file:
+
+```text
+/Users/chasefagen/.config/agent-scripts/abita-amd-dev.env
+```
 
 Required environment variables:
 
@@ -60,6 +66,14 @@ Run with `bash`. If env vars are missing, the script prompts with hidden input.
 
 ```bash
 set +x
+
+cred_file="${ABITA_AMD_DEV_ENV:-/Users/chasefagen/.config/agent-scripts/abita-amd-dev.env}"
+if [ -f "$cred_file" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$cred_file"
+  set +a
+fi
 
 : "${AMD_ENV:=dev}"
 export ADVANCEDMD_USERNAME ADVANCEDMD_PASSWORD ADVANCEDMD_OFFICE_KEY ADVANCEDMD_APP_NAME AMD_ENV
