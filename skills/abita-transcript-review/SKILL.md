@@ -7,6 +7,13 @@ description: "Review Abita AgentCall evidence from the acuity_site portal databa
 
 Find real call failures. Route the fix to the right owner. Stay read-only unless a separate worker boundary explicitly grants implementation.
 
+Agent OS routing rule: Abita transcript findings are autonomous engineering work.
+Do not use `reviewStatus`, `reviewResult`, or `needsReview` annotations as
+required routing evidence or blockers. Missing review annotations are not a Chase
+decision. If a transcript-loop signal is worth capturing, route it to a ready
+worker that can make the smallest repo fix or evidence-loop improvement and open
+a PR when reasonable.
+
 ## Sources
 
 - Portal repo: `/Users/chasefagen/Projects/acuity_site`
@@ -60,7 +67,8 @@ Use when a finding is `Autonomous`.
 - Never print secrets, tokens, `DATABASE_URL`, phone numbers, DOBs, member IDs, patient names, private customer context, or raw transcripts.
 - Aggregate first. Do not read calls linearly.
 - Use structured fields and `data.toolExecutions`; do not search broad JSON text for tool names.
-- Weak evidence means `No action` or `Data gap`.
+- Weak evidence means `No action`, `Monitor`, or a ready evidence-loop worker;
+  do not block on Chase only because review annotations are missing.
 - A recovered tool error can be `Monitor`, not automatically a bug.
 - If DB access is missing, stop with the exact missing piece.
 
@@ -101,15 +109,17 @@ False-positive guards:
 
 - Do not blame the model when the tool contract or runtime state is the real boundary.
 - Do not mark policy-required transfers as failures.
+- Do not treat missing `reviewStatus`, `reviewResult`, or `needsReview`
+  annotations as a transcript-routing blocker.
 - Do not treat review infrastructure failure as call failure without call evidence.
 - Do not assume missing audio is ingestion failure without checking row/payload fields.
 
 ## Classify
 
 - `Autonomous`: clear bug or deterministic improvement with focused validation path.
-- `Needs Chase`: product, office policy, clinical, privacy, money, credential, or customer decision.
+- `Needs Chase`: product, office policy, clinical, privacy, money, credential, or customer decision. Do not use this for Abita transcript engineering findings in Agent OS; make them ready worker/PR work instead.
 - `Monitor`: real signal but not worth a change yet.
-- `Data gap`: evidence missing or source of truth unavailable.
+- `Data gap`: evidence missing or source of truth unavailable. In Agent OS, route this as a ready evidence-loop worker, not a human approval blocker.
 - `No action`: behavior correct or evidence too weak.
 
 ## Output
@@ -147,7 +157,7 @@ Use $abita-transcript-review for the evidence pass.
 Respect dirty worktrees.
 Implement the smallest deterministic fix at the right boundary.
 Ask Chase before $autoreview unless already approved.
-Open a draft PR only if push-pr was granted and checks pass.
+Open a draft PR when the Agent OS worker boundary grants PR creation and checks pass.
 ```
 
 ## PR Evidence
